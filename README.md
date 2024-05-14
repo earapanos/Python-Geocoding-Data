@@ -1,3 +1,5 @@
+![openart-image_JECrDnRQ_1715684494402_raw](https://github.com/earapanos/python-geocoding-data/assets/52800638/8fe0bfcb-5937-482d-9c5f-6a671812e51c)
+
 ### Address Geocoding with ArcGIS API
 
 #### Description
