@@ -5,9 +5,12 @@
 ### The main function calls the other functions and uses a while loop to restart the code in case of an error ###
 ### THIS CODE WAS DEVELOPED BY EDUARDO ADRIANI RAPANOS - https://github.com/earapanos/earapanos ###
 ### LAST UPDATE: 2024-05-13 ###
+### 1.5 Version - Including ThreadPoolExecutor with MaxWorkers. V ###
+
 
 from geopy.geocoders import ArcGIS
 import psycopg2
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def connect_database(host, database, user, password):
     try:
@@ -39,47 +42,44 @@ def count_geocodable_elements(connection, schema, table, municipalities, address
     return total_elements, geocodable_elements
 
 def geocode_address(address, geolocator):
-    location = geolocator.geocode(address)
-    if location:
-        latitude = location.latitude
-        longitude = location.longitude
-        precision = 'ArcGIS API'  # ArcGIS doesn't directly provide this information
-        endereco_formatado = location.address
-        return latitude, longitude, precision, endereco_formatado
-    else:
-        print(f'Error geocoding address: {address}')
-        return None, None, None, None
+    try:
+        location = geolocator.geocode(address)
+        if location:
+            latitude = location.latitude
+            longitude = location.longitude
+            precision = 'ArcGIS API'  # ArcGIS doesn't directly provide this information
+            endereco_formatado = location.address
+            return address, latitude, longitude, precision, endereco_formatado
+    except Exception as e:
+        print(f'Error geocoding address: {address} - {e}')
+    
+    return address, None, None, None, None
 
-def update_geocoded_table(connection, schema, table, address_column, precision_column, endereco_formatado, municipalities, geolocator):
+def update_geocoded_table(connection, schema, table, address_column, precision_column, endereco_formatado_column, municipalities, geolocator, max_workers=4):
     cursor = connection.cursor()
-    query = f"SELECT {address_column}, latitude, longitude, ativo FROM {schema}.{table} WHERE {municipalities} AND ativo = True AND precisao_geocoding IS NULL"  # This is the filter
- # This is the filter
+    query = f"SELECT {address_column}, latitude, longitude, ativo FROM {schema}.{table} WHERE {municipalities} AND ativo = True AND precisao_geocoding IS NULL"
     cursor.execute(query)
     addresses = cursor.fetchall()
-
-    batch_size = 100  # Define batch size
-    for i in range(0, len(addresses), batch_size):
-        batch = addresses[i:i + batch_size]
-        process_addresses(connection, schema, table, address_column, precision_column, endereco_formatado, municipalities, geolocator, batch)
-
     cursor.close()
 
-def process_addresses(connection, schema, table, address_column, precision_column, endereco_formatado, municipalities, geolocator, addresses):
-    for address in addresses:
-        address, latitude, longitude, active = address[0], address[1], address[2], address[3]
-        if active and (latitude is None or longitude is None):
-            latitude, longitude, precision, endereco_formatado = geocode_address(address, geolocator)
-            if latitude is not None and longitude is not None:
-                endereco_formatado = endereco_formatado.replace("'", " ")
-                update_query = f'UPDATE {schema}.{table} SET latitude = {latitude}, longitude = {longitude}, {precision_column} = \'{precision}\', endereco_formatado = \'{endereco_formatado}\' WHERE {address_column} = %s'
-                with connection.cursor() as cursor:
-                    cursor.execute(update_query, (address,))
-                    connection.commit()
-                    print(f'Address: {address} geocoded. Latitude: {latitude}, Longitude: {longitude}, Precision: {precision}, Formatted Address: {endereco_formatado}')
-            else:
-                print(f'Error geocoding address: {address}')
-        else:
-            print(f'Address: {address} will not be geocoded.')
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_address = {executor.submit(geocode_address, address[0], geolocator): address for address in addresses}
+        
+        for future in as_completed(future_to_address):
+            address = future_to_address[future]
+            try:
+                address, latitude, longitude, precision, endereco_formatado = future.result()
+                if latitude is not None and longitude is not None:
+                    endereco_formatado = endereco_formatado.replace("'", " ")
+                    update_query = f'UPDATE {schema}.{table} SET latitude = %s, longitude = %s, {precision_column} = %s, {endereco_formatado_column} = %s WHERE {address_column} = %s'
+                    with connection.cursor() as update_cursor:
+                        update_cursor.execute(update_query, (latitude, longitude, precision, endereco_formatado, address))
+                        connection.commit()
+                        print(f'Address: {address} geocoded. Latitude: {latitude}, Longitude: {longitude}, Precision: {precision}, Formatted Address: {endereco_formatado}')
+                else:
+                    print(f'Error geocoding address: {address}')
+            except Exception as exc:
+                print(f'Address: {address} generated an exception: {exc}')
 
 def close_connection(connection):
     if connection is not None:
