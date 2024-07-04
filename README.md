@@ -13,13 +13,12 @@ This Python script geocodes addresses from a PostgreSQL database using the ArcGI
 *   **Address Geocoding:** Uses the ArcGIS geocoder to geocode addresses from the database.
 *   **Table Update:** Updates the geocoded table in the database with latitude, longitude, geocoding precision, and formatted address.
 *   **Error Handling:** Restarts the code in case of an error, ensuring continuous operation.
-*   **Multithreading:** Utilizes ThreadPoolExecutor to geocode addresses in parallel, significantly improving performance.
 
 #### Usage
 
 1.  Update the database connection parameters (`host`, `database`, `user`, `password`).
 2.  Specify the schema, table, address column, precision column, and formatted address column in the `main` function.
-3.  Define the municipalities to geocode in the `municipalities` variable.
+3.  Define the municipalities to geocode in the `municipalities_condition` variable.
 4.  Run the script to start the geocoding process.
 
 #### Requirements
