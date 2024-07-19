@@ -26,7 +26,6 @@ This Python script geocodes addresses from a PostgreSQL database using the ArcGI
 *   Python 3.x
 *   psycopg2
 *   geopy
-*   concurrent.futures (part of the Python standard library)
 
 #### Author
 
